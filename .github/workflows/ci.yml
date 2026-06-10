@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Server — install, typecheck, test (incl. convergence fuzz)
+        working-directory: server
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+      - name: App — install, typecheck
+        working-directory: app
+        run: |
+          npm ci
+          npx tsc --noEmit
+
+      - name: n8n workflows — validate structure
+        run: |
+          node -e "
+          for (const f of ['./n8n-workflow.json', './n8n-workflow-reward-prototype.json']) {
+            const wf = require(f);
+            const names = new Set(wf.nodes.map(n => n.name));
+            for (const [from, conns] of Object.entries(wf.connections)) {
+              if (!names.has(from)) throw new Error(f + ': bad source ' + from);
+              for (const b of conns.main) for (const c of b)
+                if (!names.has(c.node)) throw new Error(f + ': bad target ' + c.node);
+            }
+            console.log(f, 'OK');
+          }"
