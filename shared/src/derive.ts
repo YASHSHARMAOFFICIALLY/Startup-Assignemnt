@@ -9,7 +9,9 @@ import { SEED_SUBJECTS } from './seed';
  */
 
 export function coinsForSession(s: SessionRec): number {
-  return s.targetMinutes; // 1 coin per focused minute, e.g. 50-min session = +50
+  // 1 coin per focused minute (50-min session = +50); short demo sessions
+  // still earn at least 1 coin.
+  return Math.max(1, Math.round(s.targetMinutes));
 }
 
 export function dayKeyOf(ms: number): string {
