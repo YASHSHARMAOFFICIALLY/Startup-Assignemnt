@@ -56,7 +56,8 @@ npx n8n              # http://localhost:5678
 In the n8n UI: **Workflows → Import from File → `n8n-workflow.json`**, open it,
 then **Activate** the workflow (important: the idempotency guard uses workflow
 static data, which only persists for active workflows — "Test workflow" runs
-start with fresh static data).
+start with fresh static data). Optionally also import
+`n8n-workflow-reward-prototype.json` (the "n8n-first" variant, see below).
 
 The backend posts to `http://localhost:5678/webhook/focus-session-success`
 (override with `N8N_WEBHOOK_URL`). The workflow delivers the notification to the
@@ -86,7 +87,13 @@ npm run typecheck
 6. The dev panel's notification sink shows **one entry per successful session**
    — even though each session's completion event was replayed and pulled by the
    other device, and the same task edits arrived from both sides.
-7. Kill and restart the server (`npm run dev`) — state survives, nothing
+7. The losing device shows a **"Merged while you were offline"** banner
+   explaining what its edit lost to.
+8. Two-way loop: in either dev panel press **"Reply: snooze 10 m"** (simulating
+   a WhatsApp reply). The reply hits the n8n webhook → backend → becomes a
+   synced event → a snooze banner appears on **both** devices. Press the same
+   reply twice — `replyId` dedupe means state changes once.
+9. Kill and restart the server (`npm run dev`) — state survives, nothing
    re-fires.
 
 ## What the core handles
@@ -124,26 +131,46 @@ npm run typecheck
 
 ## Beyond core (from the optional list)
 
+- **Two-way loop**: the dev panel simulates a WhatsApp reply ("done" /
+  "snooze 10 m") → n8n's `notification-reply` webhook → backend turns it into a
+  **server-authored event** in the same log (the server keeps its own HLC) → it
+  reconciles to every device like any other edit. Replies carry a `replyId`, so
+  a replayed reply mutates state exactly once (covered by a test).
+- **n8n-first, then migrate**: `n8n-workflow-reward-prototype.json` implements
+  the streak/coins rule *inside an n8n Code node* from raw facts; start the
+  server with `REWARD_RULE_IN_N8N=1` to route through it. The default path is
+  the same rule migrated into the shared reducer. Tradeoff discussion in
+  DECISIONS.md.
+- **Surfaces conflicts to the user**: when a pulled remote edit beats a write
+  made on *this* device (or deletes a task this device edited), the app shows a
+  "Merged while you were offline" banner saying exactly what happened, instead
+  of changing data silently.
 - **Property/fuzz test**: randomized offline edit sequences across **3 devices**
   with skewed clocks and replayed deliveries always converge (30 seeded runs).
 - **Works with 3+ devices**: nothing in the protocol is two-device-specific
-  (the fuzz test runs three).
+  (the fuzz test runs three; on web, any `?client=X` is another device).
 - **Survives app restart / crash mid-session**: state + outbox persist; an
   interrupted focus session is detected and failed on next boot.
 - **Resumes safely mid-sync**: the cursor only advances after a successful
   apply+persist; a dropped response just means the next round re-pulls
   (idempotently).
+- **Efficient sync**: devices exchange only deltas — the outbox (new local
+  events) goes up, only events after the device's cursor come down. Full state
+  never crosses the wire (a brand-new device replaying history is the
+  bootstrapping exception; compaction is the known fix, see DECISIONS.md).
+- **CI**: GitHub Actions runs typechecks and the full test suite on every push.
+
+Still on the table: running on a real phone via Expo Go (supported via
+`EXPO_PUBLIC_SERVER_URL`, demoed best live).
 
 ## What I left out / would do next
 
-- **Two-way loop** (reply "done/snooze" from the notification → n8n webhook →
-  backend event): the event pipeline already supports it — it's one more event
-  type plus an n8n webhook node.
 - **Log compaction / snapshotting** so new devices don't replay full history
   (the tradeoff discussed in DECISIONS.md).
 - **Per-user timezone** for day boundaries; currently device-local.
 - **SQLite on device** instead of a single AsyncStorage document; transactional
   appends.
-- **Surfacing conflicts to the user** when an auto-merge isn't obviously right
-  (e.g. a toast: "Laptop changed this task too — kept the newer edit").
-- Auth, multiple students, real WhatsApp delivery.
+- **Richer reply actions** (e.g. "done" marking a chosen task complete) — the
+  reply→event pipeline is in place; it's a mapping decision, not a sync problem.
+- Auth, multiple students, real WhatsApp delivery (swap the sink HTTP node for
+  a provider node; the idempotency story is unchanged).

@@ -4,6 +4,16 @@ import type { Store } from './store';
 const N8N_WEBHOOK_URL =
   process.env.N8N_WEBHOOK_URL ?? 'http://localhost:5678/webhook/focus-session-success';
 
+/**
+ * "n8n-first, then migrate": with REWARD_RULE_IN_N8N=1 the server sends raw
+ * session facts to the prototype workflow, which computes streak/coins inside
+ * an n8n Code node. The default path is the migrated version — the rule lives
+ * in shared/src/derive.ts. Tradeoff discussion in DECISIONS.md.
+ */
+const REWARD_RULE_IN_N8N = process.env.REWARD_RULE_IN_N8N === '1';
+const N8N_PROTOTYPE_WEBHOOK_URL =
+  process.env.N8N_PROTOTYPE_WEBHOOK_URL ?? 'http://localhost:5678/webhook/reward-rule-prototype';
+
 export interface SessionWebhookPayload {
   /** Stable dedupe key — the n8n workflow keys its idempotency guard on this. */
   sessionId: string;
@@ -24,19 +34,38 @@ export async function notifySession(store: Store, sessionId: string): Promise<vo
   const session = store.state.sessions[sessionId];
   if (!session || session.status !== 'completed') return;
 
-  const rewards = deriveRewards(store.state, dayKeyOf(Date.now()));
-  const payload: SessionWebhookPayload = {
-    sessionId,
-    studentId: 'student-1',
-    targetMinutes: session.targetMinutes,
-    coinsEarned: session.targetMinutes,
-    streakDays: rewards.streakDays,
-    todayFocusMinutes: rewards.todayFocusMinutes,
-  };
+  let url = N8N_WEBHOOK_URL;
+  let payload: object;
+  if (REWARD_RULE_IN_N8N) {
+    url = N8N_PROTOTYPE_WEBHOOK_URL;
+    payload = {
+      sessionId,
+      studentId: 'student-1',
+      targetMinutes: session.targetMinutes,
+      todayKey: dayKeyOf(Date.now()),
+      completedDayKeys: [
+        ...new Set(
+          Object.values(store.state.sessions)
+            .filter((s) => s.status === 'completed')
+            .map((s) => s.dayKey!),
+        ),
+      ],
+    };
+  } else {
+    const rewards = deriveRewards(store.state, dayKeyOf(Date.now()));
+    payload = {
+      sessionId,
+      studentId: 'student-1',
+      targetMinutes: session.targetMinutes,
+      coinsEarned: Math.max(1, Math.round(session.targetMinutes)),
+      streakDays: rewards.streakDays,
+      todayFocusMinutes: rewards.todayFocusMinutes,
+    } satisfies SessionWebhookPayload;
+  }
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const res = await fetch(N8N_WEBHOOK_URL, {
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload),

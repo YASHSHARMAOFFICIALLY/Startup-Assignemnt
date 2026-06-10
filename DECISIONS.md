@@ -93,6 +93,34 @@ that a replay could re-execute.
 So the layering is: at-least-once delivery + dedupe-by-stable-id at every
 consumer = exactly-once *effect*.
 
+The **two-way loop** applies the same recipe in reverse: a WhatsApp reply
+("done" / "snooze 10m") hits n8n's reply webhook, n8n forwards it to
+`POST /notification-reply`, and the backend emits a **server-authored event**
+(the server is just another replica with its own HLC and deviceId) into the
+same log, deduped on the reply's stable `replyId`. From there it reconciles to
+every device exactly like a device-made edit — one code path, one set of
+guarantees.
+
+## n8n-first, then migrate (and why the rule ended up in code)
+
+`n8n-workflow-reward-prototype.json` is the reward rule **prototyped in n8n**:
+the backend sends raw facts (target minutes + the set of successful days) and a
+Code node computes coins and streak. `REWARD_RULE_IN_N8N=1` routes production
+traffic through it. The hardened version is the same rule migrated into
+`shared/src/derive.ts`. What the migration buys, and what it costs:
+
+- **For n8n-first**: the rule is editable live by non-engineers, observable per
+  execution, and iterable without a deploy — ideal while the reward design is
+  still changing.
+- **For migrating**: devices must compute rewards **offline-instantly**, so the
+  rule has to exist client-side anyway; keeping a second copy in n8n means two
+  sources of truth that can drift (the prototype's message is even labeled
+  "(computed in n8n)" so drift would be visible). In code the rule is unit- and
+  fuzz-tested, type-checked, and versioned with the data model it reads.
+- **The landing point**: business rules that gate user-visible state live in
+  the shared reducer; n8n keeps what it's best at — delivery, integration
+  fan-out, and the final idempotency guard.
+
 ## One tradeoff I made deliberately
 
 **Full-state pull simplicity over efficient sync.** A device that falls behind

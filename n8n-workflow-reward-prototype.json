@@ -1,0 +1,127 @@
+{
+  "name": "Alcovia - Reward Rule Prototype (n8n-first)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "reward-rule-prototype",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "b1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Session Success Webhook (raw facts)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "b1b2c3d4-0001-4000-8000-00000000000a"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n-FIRST PROTOTYPE of the reward rule. The backend sends raw facts\n// (targetMinutes + the set of days with a successful session) and the\n// business rule — coins and streak — lives HERE, editable without a deploy.\n// The migrated/hardened version of this exact rule is shared/src/derive.ts.\n//\n// Same idempotency guard as the production workflow: dedupe on sessionId.\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.seenSessionIds) staticData.seenSessionIds = {};\n\nconst p = $input.first().json.body ?? $input.first().json;\nconst duplicate = p.sessionId in staticData.seenSessionIds;\nif (!duplicate) staticData.seenSessionIds[p.sessionId] = Date.now();\n\n// Rule 1: coins = 1 per target minute, minimum 1.\nconst coinsEarned = Math.max(1, Math.round(p.targetMinutes));\n\n// Rule 2: streak = consecutive days with >= 1 success, counting back from\n// today (a success-free today doesn't break yesterday's streak).\nconst days = new Set(p.completedDayKeys);\nconst shift = (dayKey, n) => {\n  const [y, m, d] = dayKey.split('-').map(Number);\n  const dt = new Date(y, m - 1, d + n);\n  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;\n};\nlet streakDays = 0;\nlet cursor = days.has(p.todayKey) ? p.todayKey : shift(p.todayKey, -1);\nwhile (days.has(cursor)) {\n  streakDays += 1;\n  cursor = shift(cursor, -1);\n}\n\nreturn [{ json: { sessionId: p.sessionId, studentId: p.studentId, coinsEarned, streakDays, duplicate } }];"
+      },
+      "id": "b1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Compute Rewards (the rule lives here)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-not-duplicate",
+              "leftValue": "={{ $json.duplicate }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1b2c3d4-0003-4000-8000-000000000003",
+      "name": "First Time?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:4000/notification-sink",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ sessionId: $json.sessionId, studentId: $json.studentId, message: 'Streak now ' + $json.streakDays + ' days, +' + $json.coinsEarned + ' coins. (computed in n8n)' }) }}",
+        "options": {}
+      },
+      "id": "b1b2c3d4-0004-4000-8000-000000000004",
+      "name": "Send Notification (mock WhatsApp sink)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, -100]
+    },
+    {
+      "parameters": {},
+      "id": "b1b2c3d4-0005-4000-8000-000000000005",
+      "name": "Duplicate - Skip",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [660, 100]
+    }
+  ],
+  "connections": {
+    "Session Success Webhook (raw facts)": {
+      "main": [
+        [
+          {
+            "node": "Compute Rewards (the rule lives here)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Rewards (the rule lives here)": {
+      "main": [
+        [
+          {
+            "node": "First Time?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "First Time?": {
+      "main": [
+        [
+          {
+            "node": "Send Notification (mock WhatsApp sink)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Duplicate - Skip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

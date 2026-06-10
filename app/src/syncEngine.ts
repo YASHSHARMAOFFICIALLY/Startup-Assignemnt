@@ -5,6 +5,17 @@ import { SEED_STUDENT_ID } from '@alcovia/shared';
 import type { AppEvent, EventBody, SyncRequest, SyncResponse, SyncState } from '@alcovia/shared';
 import { DEVICE_ID, SERVER_URL, STORAGE_PREFIX, SYNC_INTERVAL_MS } from './config';
 
+/**
+ * Shown when an automatic merge wasn't obviously right — i.e. a remote write
+ * beat a conflicting write made on THIS device. The merge itself is already
+ * settled (same outcome on every replica); this just tells the student.
+ */
+export interface ConflictNotice {
+  id: number;
+  atMs: number;
+  message: string;
+}
+
 export interface EngineSnapshot {
   state: SyncState;
   online: boolean;
@@ -13,6 +24,7 @@ export interface EngineSnapshot {
   lastSyncAtMs: number | null;
   lastSyncError: string | null;
   syncing: boolean;
+  notices: ConflictNotice[];
 }
 
 interface PersistedEngine {
@@ -45,6 +57,8 @@ export class SyncEngine {
   private lastSyncAtMs: number | null = null;
   private lastSyncError: string | null = null;
   private syncing = false;
+  private notices: ConflictNotice[] = [];
+  private noticeSeq = 0;
   private listeners = new Set<() => void>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private snapshot: EngineSnapshot | null = null;
@@ -126,6 +140,7 @@ export class SyncEngine {
       this.outbox = this.outbox.filter((e) => !sentIds.has(e.eventId));
       for (const ev of data.events) {
         this.hlc = hlcReceive(this.hlc, ev.hlc, DEVICE_ID, Date.now());
+        this.detectConflict(ev);
         applyEvent(this.state, ev);
       }
       this.cursor = data.cursor;
@@ -138,6 +153,36 @@ export class SyncEngine {
       this.syncing = false;
       this.bump();
     }
+  }
+
+  /**
+   * Before folding a pulled event in, check whether it overrides a conflicting
+   * write that was made on this device — that's the case where an automatic
+   * merge "isn't obviously right" and the student deserves a heads-up.
+   */
+  private detectConflict(ev: AppEvent): void {
+    if (ev.deviceId === DEVICE_ID || this.state.appliedEventIds[ev.eventId]) return;
+    if (ev.type !== 'task_status_changed' && ev.type !== 'task_deleted') return;
+    const current = this.state.tasks[ev.taskId];
+    const ours = current && !current.deleted && current.statusHlc.endsWith(`:${DEVICE_ID}`);
+    if (!ours) return;
+
+    const who = ev.deviceId === 'server' ? 'the server' : ev.deviceId.replace('device-', 'device ');
+    let message: string | null = null;
+    if (ev.type === 'task_deleted') {
+      // Tombstone wins no matter the HLC, so any local edit is overridden.
+      message = `A task you set to "${current.status.replace('_', ' ')}" was deleted on ${who}.`;
+    } else if (ev.hlc > current.statusHlc && ev.status !== current.status) {
+      message = `Both devices edited the same task: kept ${who}'s "${ev.status.replace('_', ' ')}" over your "${current.status.replace('_', ' ')}" (newer edit wins).`;
+    }
+    if (message) {
+      this.notices = [...this.notices.slice(-19), { id: ++this.noticeSeq, atMs: Date.now(), message }];
+    }
+  }
+
+  dismissNotices() {
+    this.notices = [];
+    this.bump();
   }
 
   /** Wipe this client's local replica (dev panel helper for demos). */
@@ -167,6 +212,7 @@ export class SyncEngine {
         lastSyncAtMs: this.lastSyncAtMs,
         lastSyncError: this.lastSyncError,
         syncing: this.syncing,
+        notices: this.notices,
       };
     }
     return this.snapshot;

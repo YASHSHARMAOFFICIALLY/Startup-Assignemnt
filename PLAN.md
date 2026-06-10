@@ -85,5 +85,18 @@ the repo in a working state.
 - [x] Final end-to-end pass of the demo script (two clients diverge offline →
       reconnect → reconcile; notification fires once)
 
+## Session 10 — Optional extensions
+- [x] **Two-way loop**: WhatsApp reply (simulated from the dev panel) → n8n
+      reply webhook → backend emits a server-authored event (own HLC, `replyId`
+      dedupe) → reconciles to all devices like any other edit
+- [x] **n8n-first, then migrate**: reward rule prototyped in an n8n Code node
+      (`n8n-workflow-reward-prototype.json`, enable with `REWARD_RULE_IN_N8N=1`),
+      migrated version lives in the shared reducer; tradeoff in DECISIONS.md
+- [x] **Surface conflicts to the user**: "Merged while you were offline" banner
+      when a remote edit beats this device's own write
+- [x] Efficient sync (delta-only exchange) — already true by design, now claimed
+      and explained
+- [x] CI: GitHub Actions running typechecks + the full test suite
+
 ## Not automatable here
 - The 5-minute demo video must be recorded manually (script for it goes in README).

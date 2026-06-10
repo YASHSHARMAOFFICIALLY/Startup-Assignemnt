@@ -70,12 +70,18 @@ class SimDevice {
           failedAtMs: this.wall(),
         });
       }
-    } else if (roll < 0.9) {
+    } else if (roll < 0.85) {
       const taskId = ALL_TASK_IDS[Math.floor(this.rand() * ALL_TASK_IDS.length)];
       this.emit({ type: 'task_status_changed', taskId, status: STATUSES[Math.floor(this.rand() * 3)] });
-    } else {
+    } else if (roll < 0.95) {
       const taskId = ALL_TASK_IDS[Math.floor(this.rand() * ALL_TASK_IDS.length)];
       this.emit({ type: 'task_deleted', taskId });
+    } else {
+      this.emit({
+        type: 'reminder_updated',
+        reminderAtMs: this.rand() < 0.5 ? null : Math.floor(this.rand() * 1e9),
+        source: 'app',
+      });
     }
   }
 
@@ -92,7 +98,7 @@ class SimDevice {
 }
 
 function comparable(state: SyncState) {
-  return { sessions: state.sessions, tasks: state.tasks };
+  return { sessions: state.sessions, tasks: state.tasks, reminder: state.reminder };
 }
 
 test('fuzz: random offline edits across 3 devices always converge, rewards exactly once', () => {
@@ -177,4 +183,23 @@ test('webhook trigger fires exactly once per session across replays and restarts
   const { newlyCompleted } = store.ingest([fromA, fromB]);
   for (const id of newlyCompleted) if (store.claimNotification(id)) triggers++;
   assert.equal(triggers, 1, 'restart caused a duplicate notification');
+});
+
+test('two-way loop: replayed WhatsApp reply mutates state exactly once', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reply-'));
+  let store = new Store(path.join(dir, 'db.json'));
+
+  // n8n (or the network) delivers the same reply twice — same replyId.
+  assert.equal(store.emitServerEvent({ type: 'reminder_updated', reminderAtMs: 123, source: 'whatsapp_reply' }, 'reply-1'), true);
+  assert.equal(store.emitServerEvent({ type: 'reminder_updated', reminderAtMs: 456, source: 'whatsapp_reply' }, 'reply-1'), false);
+  assert.equal(store.state.reminder!.reminderAtMs, 123);
+
+  // The server event syncs to a device like any other edit.
+  const dev = new SimDevice('devA', mulberry32(1), () => Date.now());
+  dev.sync(store, { replayPush: false });
+  assert.equal(dev.state.reminder!.reminderAtMs, 123);
+
+  // And it survives a server restart (it's in the same durable log).
+  store = new Store(path.join(dir, 'db.json'));
+  assert.equal(store.state.reminder!.reminderAtMs, 123);
 });

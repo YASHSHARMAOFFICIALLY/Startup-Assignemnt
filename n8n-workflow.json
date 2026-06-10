@@ -76,6 +76,35 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [660, 100]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "notification-reply",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0006-4000-8000-000000000006",
+      "name": "Reply Webhook (two-way loop)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "a1b2c3d4-0006-4000-8000-00000000000b"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:4000/notification-reply",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ action: $json.body.action, replyId: $json.body.replyId, studentId: $json.body.studentId }) }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0007-4000-8000-000000000007",
+      "name": "Forward Reply to Backend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 300]
     }
   ],
   "connections": {
@@ -113,6 +142,17 @@
         [
           {
             "node": "Duplicate - Skip",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply Webhook (two-way loop)": {
+      "main": [
+        [
+          {
+            "node": "Forward Reply to Backend",
             "type": "main",
             "index": 0
           }

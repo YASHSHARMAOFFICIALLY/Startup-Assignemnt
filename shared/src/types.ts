@@ -28,7 +28,17 @@ export type EventBody =
       failedAtMs: number;
     }
   | { type: 'task_status_changed'; taskId: string; status: TaskStatus }
-  | { type: 'task_deleted'; taskId: string };
+  | { type: 'task_deleted'; taskId: string }
+  | {
+      /**
+       * Two-way loop: a WhatsApp/notification reply ("done" / "snooze 10m")
+       * comes back through n8n and the backend turns it into a normal event,
+       * so it reconciles across devices like any other edit.
+       */
+      type: 'reminder_updated';
+      reminderAtMs: number | null;
+      source: 'whatsapp_reply' | 'app';
+    };
 
 export type AppEvent = EventBody & {
   /** Globally unique, generated on the device. The idempotency key everywhere. */
@@ -60,9 +70,17 @@ export interface TaskRec {
   deleted: boolean;
 }
 
+export interface ReminderRec {
+  reminderAtMs: number | null;
+  source: 'whatsapp_reply' | 'app';
+  statusHlc: string;
+}
+
 export interface SyncState {
   sessions: Record<string, SessionRec>;
   tasks: Record<string, TaskRec>;
+  /** LWW register driven by the two-way notification loop (and the app). */
+  reminder: ReminderRec | null;
   /** Events already folded in — makes applying a replayed event a no-op. */
   appliedEventIds: Record<string, true>;
 }

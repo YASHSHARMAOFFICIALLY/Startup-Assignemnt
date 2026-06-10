@@ -22,3 +22,8 @@ export const DEVICE_ID = `device-${CLIENT_NAME}`;
 export const STORAGE_PREFIX = `alcovia:${CLIENT_NAME}:`;
 export const SYNC_INTERVAL_MS = 2500;
 export const BACKGROUND_GRACE_MS = 5000;
+
+/** Where simulated WhatsApp replies are sent (the n8n two-way-loop webhook). */
+export const N8N_REPLY_WEBHOOK_URL =
+  process.env.EXPO_PUBLIC_N8N_REPLY_WEBHOOK_URL ??
+  'http://localhost:5678/webhook/notification-reply';

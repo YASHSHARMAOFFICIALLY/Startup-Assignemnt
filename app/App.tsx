@@ -4,6 +4,7 @@ import { SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CLIENT_NAME } from './src/config';
 import { focus } from './src/focus';
 import { engine } from './src/syncEngine';
+import { ConflictBanner, ReminderBanner } from './src/ui/Banners';
 import { DevPanel } from './src/ui/DevPanel';
 import { FocusScreen } from './src/ui/FocusScreen';
 import { SyllabusScreen } from './src/ui/SyllabusScreen';
@@ -38,6 +39,8 @@ export default function App() {
             Client {CLIENT_NAME} · open another tab with ?client=B for a second device
           </Text>
         </View>
+        <ReminderBanner />
+        <ConflictBanner />
         <FocusScreen />
         <SyllabusScreen />
         <DevPanel />

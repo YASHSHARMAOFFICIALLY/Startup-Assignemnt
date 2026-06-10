@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Switch, Text, View } from 'react-native';
-import { CLIENT_NAME, DEVICE_ID, SERVER_URL } from '../config';
+import { CLIENT_NAME, DEVICE_ID, N8N_REPLY_WEBHOOK_URL, SERVER_URL } from '../config';
 import { engine } from '../syncEngine';
 import { Btn, Pill, Section } from './common';
 
@@ -18,6 +18,27 @@ export function DevPanel() {
   const snap = React.useSyncExternalStore(engine.subscribe, engine.getSnapshot);
   const [sink, setSink] = useState<SinkEntry[] | null>(null);
   const [showState, setShowState] = useState(false);
+  const [replyStatus, setReplyStatus] = useState<string | null>(null);
+
+  // Two-way loop demo: pretend the student replied to the WhatsApp message.
+  // The reply goes to the n8n webhook, n8n forwards it to the backend, the
+  // backend emits a synced event — and BOTH devices see the result.
+  const sendReply = async (action: 'done' | 'snooze_10m') => {
+    try {
+      const res = await fetch(N8N_REPLY_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          replyId: `${DEVICE_ID}-${Date.now()}`,
+          studentId: 'student-1',
+        }),
+      });
+      setReplyStatus(res.ok ? `reply "${action}" sent via n8n ✓` : `n8n said HTTP ${res.status}`);
+    } catch {
+      setReplyStatus('n8n unreachable — is it running with the workflow active?');
+    }
+  };
 
   useEffect(() => {
     const poll = async () => {
@@ -64,6 +85,13 @@ export function DevPanel() {
         <Btn label={showState ? 'Hide local state' : 'Show local state'} kind="ghost" onPress={() => setShowState(!showState)} />
         <Btn label="Reset this client" kind="danger" onPress={() => void engine.resetLocal()} />
       </View>
+
+      <Text style={styles.subTitle}>Two-way loop — simulate a WhatsApp reply</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        <Btn label="Reply: done ✅" kind="ghost" onPress={() => void sendReply('done')} />
+        <Btn label="Reply: snooze 10 m 😴" kind="ghost" onPress={() => void sendReply('snooze_10m')} />
+      </View>
+      {replyStatus && <Text style={styles.muted}>{replyStatus}</Text>}
 
       <Text style={styles.subTitle}>
         Notification sink (via n8n) — each successful session must appear exactly once

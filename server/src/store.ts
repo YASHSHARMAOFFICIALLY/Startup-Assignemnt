@@ -1,9 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { hlcReceive, hlcTick } from '../../shared/src/hlc';
 import { applyEvent, emptyState } from '../../shared/src/reducer';
-import type { AppEvent, SyncState } from '../../shared/src/types';
+import { SEED_STUDENT_ID } from '../../shared/src/seed';
+import type { AppEvent, EventBody, SyncState } from '../../shared/src/types';
 
 export type NotifyStatus = 'pending' | 'sent';
+
+const SERVER_DEVICE_ID = 'server';
 
 interface DbShape {
   events: AppEvent[];
@@ -12,6 +16,11 @@ interface DbShape {
   notified: Record<string, NotifyStatus>;
   /** What the mock notification sink has received (for the dev panel). */
   sinkLog: { receivedAtMs: number; body: unknown }[];
+  /**
+   * The server is itself a replica that can author events (two-way loop:
+   * notification replies become events here), so it keeps its own HLC.
+   */
+  serverHlc: string | null;
 }
 
 /**
@@ -25,9 +34,9 @@ export class Store {
 
   constructor(private file: string) {
     if (fs.existsSync(file)) {
-      this.db = JSON.parse(fs.readFileSync(file, 'utf8'));
+      this.db = { serverHlc: null, ...JSON.parse(fs.readFileSync(file, 'utf8')) };
     } else {
-      this.db = { events: [], lastSeq: 0, notified: {}, sinkLog: [] };
+      this.db = { events: [], lastSeq: 0, notified: {}, sinkLog: [], serverHlc: null };
     }
     for (const ev of this.db.events) applyEvent(this.state, ev);
   }
@@ -48,6 +57,7 @@ export class Store {
     const newlyCompleted: string[] = [];
     for (const ev of events) {
       if (this.state.appliedEventIds[ev.eventId]) continue;
+      this.db.serverHlc = hlcReceive(this.db.serverHlc, ev.hlc, SERVER_DEVICE_ID, Date.now());
       const wasCompleted =
         ev.type === 'session_completed' &&
         this.state.sessions[ev.sessionId]?.status === 'completed';
@@ -64,6 +74,26 @@ export class Store {
     }
     if (newlyCompleted.length || events.length) this.persist();
     return { newlyCompleted };
+  }
+
+  /**
+   * Author an event *on the server* (two-way loop). It flows through the same
+   * idempotent ingest as device events — pass a stable `idempotencyKey`
+   * (e.g. the WhatsApp reply id) and replays become no-ops. Returns false if
+   * the event was a duplicate.
+   */
+  emitServerEvent(body: EventBody, idempotencyKey?: string): boolean {
+    this.db.serverHlc = hlcTick(this.db.serverHlc, SERVER_DEVICE_ID, Date.now());
+    const ev: AppEvent = {
+      ...body,
+      eventId: idempotencyKey ? `server-${idempotencyKey}` : `server-${this.db.serverHlc}`,
+      studentId: SEED_STUDENT_ID,
+      deviceId: SERVER_DEVICE_ID,
+      hlc: this.db.serverHlc,
+    };
+    if (this.state.appliedEventIds[ev.eventId]) return false;
+    this.ingest([ev]);
+    return true;
   }
 
   eventsAfter(cursor: number, studentId: string): AppEvent[] {

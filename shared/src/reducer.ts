@@ -13,7 +13,7 @@ import type { AppEvent, SessionRec, SyncState, TaskRec } from './types';
  */
 
 export function emptyState(): SyncState {
-  return { sessions: {}, tasks: {}, appliedEventIds: {} };
+  return { sessions: {}, tasks: {}, reminder: null, appliedEventIds: {} };
 }
 
 /** LWW: does an event stamped `incoming` beat the state written at `current`? */
@@ -89,6 +89,12 @@ export function applyEvent(state: SyncState, ev: AppEvent): SyncState {
         statusHlc: deleteHlc,
         deleted: true,
       };
+      return state;
+    }
+    case 'reminder_updated': {
+      if (!state.reminder || wins(ev.hlc, state.reminder.statusHlc)) {
+        state.reminder = { reminderAtMs: ev.reminderAtMs, source: ev.source, statusHlc: ev.hlc };
+      }
       return state;
     }
   }

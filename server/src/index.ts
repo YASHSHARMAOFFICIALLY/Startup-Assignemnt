@@ -44,8 +44,32 @@ app.get('/state/:studentId', (req, res) => {
     rewards: deriveRewards(store.state, dayKeyOf(Date.now())),
     sessions: store.state.sessions,
     tasks: store.state.tasks,
+    reminder: store.state.reminder,
     lastSeq: store.lastSeq,
   });
+});
+
+/**
+ * Two-way loop: n8n forwards the student's WhatsApp reply here ("done" /
+ * "snooze 10m"). It becomes a server-authored event in the same log, so it
+ * reconciles to every device like any other edit. `replyId` is the dedupe key:
+ * the same reply delivered twice mutates state exactly once.
+ */
+app.post('/notification-reply', (req, res) => {
+  const { action, replyId } = (req.body ?? {}) as { action?: string; replyId?: string };
+  if (action !== 'done' && action !== 'snooze_10m') {
+    return res.status(400).json({ error: 'action must be "done" or "snooze_10m"' });
+  }
+  const applied = store.emitServerEvent(
+    {
+      type: 'reminder_updated',
+      reminderAtMs: action === 'snooze_10m' ? Date.now() + 10 * 60_000 : null,
+      source: 'whatsapp_reply',
+    },
+    replyId,
+  );
+  console.log(`[reply] ${action} (replyId=${replyId ?? 'none'}) applied=${applied}`);
+  res.json({ ok: true, applied });
 });
 
 /** Mock notification sink — the n8n workflow delivers here. */

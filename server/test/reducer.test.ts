@@ -73,6 +73,15 @@ test('late session_started cannot resurrect a finished session', () => {
   assert.equal(s.sessions['s1'].status, 'completed');
 });
 
+test('reminder (two-way loop): LWW register, order-insensitive', () => {
+  const snooze = ev({ type: 'reminder_updated', reminderAtMs: 999, source: 'whatsapp_reply' }, hlcTick(null, 'server', 1000));
+  const dismiss = ev({ type: 'reminder_updated', reminderAtMs: null, source: 'app' }, hlcTick(null, 'A', 2000));
+  const s1 = buildState([snooze, dismiss]);
+  const s2 = buildState([dismiss, snooze]);
+  assert.equal(s1.reminder!.reminderAtMs, null);
+  assert.deepEqual(s1.reminder, s2.reminder);
+});
+
 test('streak: consecutive days, today missing does not break it', () => {
   const s = emptyState();
   let clock: string | null = null;
