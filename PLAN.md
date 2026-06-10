@@ -15,74 +15,74 @@ the repo in a working state.
 
 ## Session 1 — Shared core: types, HLC, reducer
 **Goal: one deterministic merge core used by BOTH app and server (`shared/`).**
-- [ ] Domain types: `FocusSession`, `Subject/Chapter/Task`, `Event` envelope
+- [x] Domain types: `FocusSession`, `Subject/Chapter/Task`, `Event` envelope
       (`eventId`, `studentId`, `deviceId`, `hlc`, `type`, `payload`)
-- [ ] Hybrid Logical Clock (HLC): sortable string, send/receive update rules
+- [x] Hybrid Logical Clock (HLC): sortable string, send/receive update rules
       (no wall-clock LWW — device clocks disagree)
-- [ ] Pure reducer: `state = fold(events)` that is **order-insensitive and
+- [x] Pure reducer: `state = fold(events)` that is **order-insensitive and
       duplicate-insensitive** (LWW registers keyed by HLC for task status,
       id-keyed maps for sessions, delete = tombstone-wins)
-- [ ] Derived rewards: coins, focus streak, today's focus total — computed from the
+- [x] Derived rewards: coins, focus streak, today's focus total — computed from the
       set of successful sessions, so replays can never double-count
 
 ## Session 2 — Express backend with sync protocol
 **Goal: server that keeps devices in sync and is idempotent end-to-end.**
-- [ ] `POST /sync`: accept client outbox events (dedupe by `eventId`), assign global
+- [x] `POST /sync`: accept client outbox events (dedupe by `eventId`), assign global
       `seq`, return all events after the client's cursor
-- [ ] JSON-file persistence (survives restart)
-- [ ] On *first* application of a `session_completed` event: fire webhook to n8n
+- [x] JSON-file persistence (survives restart)
+- [x] On *first* application of a `session_completed` event: fire webhook to n8n
       exactly once (dedupe on `sessionId`, persisted)
-- [ ] Mock notification sink: `POST /notification-sink` + `GET /notifications`
+- [x] Mock notification sink: `POST /notification-sink` + `GET /notifications`
       so the app's dev panel can show notifications firing exactly once
-- [ ] Debug endpoint `GET /state/:studentId`
+- [x] Debug endpoint `GET /state/:studentId`
 
 ## Session 3 — Convergence + idempotency tests
 **Goal: prove the merge logic, don't just claim it.**
-- [ ] Unit tests: HLC ordering, reducer rules (conflicting task edits, edit-vs-delete,
+- [x] Unit tests: HLC ordering, reducer rules (conflicting task edits, edit-vs-delete,
       duplicate/out-of-order events)
-- [ ] Fuzz/property test: many random offline edit sequences across 2–3 simulated
+- [x] Fuzz/property test: many random offline edit sequences across 2–3 simulated
       devices, random sync order, replayed messages → states always converge,
       rewards counted exactly once, webhook fired exactly once per success
 
 ## Session 4 — App: offline-first storage + sync client
 **Goal: every action works instantly offline and survives restart.**
-- [ ] Per-client storage namespace (`?client=A` / `?client=B` on web) so two tabs
+- [x] Per-client storage namespace (`?client=A` / `?client=B` on web) so two tabs
       behave like two real devices
-- [ ] Durable local store: event log + outbox in AsyncStorage/localStorage
-- [ ] Sync engine: apply local events optimistically, push outbox + pull on a poll
+- [x] Durable local store: event log + outbox in AsyncStorage/localStorage
+- [x] Sync engine: apply local events optimistically, push outbox + pull on a poll
       loop, dedupe, recompute state via the shared reducer
-- [ ] Manual online/offline switch that actually blocks network calls
+- [x] Manual online/offline switch that actually blocks network calls
 
 ## Session 5 — App: Feature A (focus sessions)
-- [ ] Start session with target duration, live countdown
-- [ ] Success when full duration elapses in-session
-- [ ] Fail on **Give up** or on backgrounding/hiding the app past a 5 s grace period
-- [ ] Restart mid-session = fail (`app_switch`) — deliberate rule, documented
-- [ ] Rewards visible immediately offline (streak, coins, today's total)
+- [x] Start session with target duration, live countdown
+- [x] Success when full duration elapses in-session
+- [x] Fail on **Give up** or on backgrounding/hiding the app past a 5 s grace period
+- [x] Restart mid-session = fail (`app_switch`) — deliberate rule, documented
+- [x] Rewards visible immediately offline (streak, coins, today's total)
 
 ## Session 6 — App: Feature B (syllabus progress)
-- [ ] Seeded subjects → chapters → tasks
-- [ ] Tap to change status (Not started → In progress → Done), works offline
-- [ ] Chapter % = done tasks ÷ total; subject % rolls up; updates instantly
-- [ ] Task delete (to demonstrate the edit-vs-delete conflict)
+- [x] Seeded subjects → chapters → tasks
+- [x] Tap to change status (Not started → In progress → Done), works offline
+- [x] Chapter % = done tasks ÷ total; subject % rolls up; updates instantly
+- [x] Task delete (to demonstrate the edit-vs-delete conflict)
 
 ## Session 7 — Dev panel (Requirement 6: demonstrable)
-- [ ] Online/offline toggle per client, force-sync button
-- [ ] Show: device id, outbox size, last sync, event count, current state
-- [ ] Live list of notifications received by the sink — shows n8n firing exactly once
+- [x] Online/offline toggle per client, force-sync button
+- [x] Show: device id, outbox size, last sync, event count, current state
+- [x] Live list of notifications received by the sink — shows n8n firing exactly once
 
 ## Session 8 — Feature C: n8n workflow
-- [ ] Webhook trigger → idempotency guard (workflow static data keyed by
+- [x] Webhook trigger → idempotency guard (workflow static data keyed by
       `sessionId`) → build message "Streak now N days, +X coins" → HTTP request to
       the mock sink → respond
-- [ ] Export as `n8n-workflow.json`, importable into a fresh n8n
+- [x] Export as `n8n-workflow.json`, importable into a fresh n8n
 
 ## Session 9 — Docs + polish
-- [ ] `README.md`: how to run app/backend, how to import + run the n8n workflow,
+- [x] `README.md`: how to run app/backend, how to import + run the n8n workflow,
       conflict cases handled, what was left out, what I'd do next
-- [ ] `DECISIONS.md`: data/sync model, conflict resolution, why two devices always
+- [x] `DECISIONS.md`: data/sync model, conflict resolution, why two devices always
       converge, how idempotency is enforced in backend **and** n8n, one tradeoff
-- [ ] Final end-to-end pass of the demo script (two clients diverge offline →
+- [x] Final end-to-end pass of the demo script (two clients diverge offline →
       reconnect → reconcile; notification fires once)
 
 ## Not automatable here
