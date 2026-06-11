@@ -7,8 +7,15 @@ product) and an n8n automation that notifies on successful sessions **exactly
 once**.
 
 See **[DECISIONS.md](DECISIONS.md)** for the sync model, conflict resolution and
-idempotency reasoning. See **[PLAN.md](PLAN.md)** for how the work was broken
-into sessions.
+idempotency reasoning.
+
+## Demo
+
+**[▶ Watch the demo video](docs/demo-video.mp4)** — offline focus rewards with event sync.
+
+Two clients staying in sync (tasks, coins, conflict handling):
+
+![Two clients side by side, synced](docs/demo-screenshot.png)
 
 ```
 shared/   the sync core: event types, hybrid logical clock, reducer (used by BOTH app & server)
