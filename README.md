@@ -11,17 +11,9 @@ idempotency reasoning.
 
 ## Demo
 
-
+Offline focus rewards with event sync (with audio — unmute the player; also at [docs/demo-video.mp4](docs/demo-video.mp4)):
 
 https://github.com/user-attachments/assets/2c6335f8-2d8e-496f-89be-23e3a5dc9cbf
-
-
-
-
-
-
-
-**[▶ Full demo video with audio](docs/demo-video.mp4)** — offline focus rewards with event sync.
 
 Two clients staying in sync (tasks, coins, conflict handling):
 
